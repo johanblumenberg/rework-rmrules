@@ -73,7 +73,7 @@ describe('rmrules', () => {
     });
 
     describe('overridden rules', () => {
-        function rmrule(input: string, options: Options = { assumeSelectorsSet: [ ".x" ], overriddenRules: Action.REMOVE }) {
+        function rmrule(input: string, options: Options = { assumeSelectorsSet: [ ".x", "#x", "x" ], overriddenRules: Action.REMOVE }) {
             return rework(input).use(rmrules(options)).toString({ compress: true });
         }
     
@@ -123,6 +123,82 @@ describe('rmrules', () => {
             let input = '.y { color: red; } .y .z { color: blue; }';
             let output = '.y{color:red;}.y .z{color:blue;}';
             expect(rmrule(input)).to.equal(output);            
+        });
+
+        describe('with id', () => {
+            it('should remove overridden rule', () => {
+                let input = '#y { color: red; } #y { color: blue; }';
+                let output = '#y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);            
+            });
+
+            it('should not remove rule with different id', () => {
+                let input = '#y { color: red; } #z { color: blue; }';
+                let output = '#y{color:red;}#z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should not remove rule without id', () => {
+                let input = '#y .y { color: red; } .y { color: blue; }';
+                let output = '#y .y{color:red;}.y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should not remove rule without id when having class on same element', () => {
+                let input = '#y.y { color: red; } .y { color: blue; }';
+                let output = '#y.y{color:red;}.y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should remove rule with id assumed always set', () => {
+                let input = '#x .y { color: red; } .y { color: blue; }';
+                let output = '#x .y{color:red;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should remove rule with id assumed always set having class on same element', () => {
+                let input = '#x.y { color: red; } .y { color: blue; }';
+                let output = '#x.y{color:red;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+        });
+
+        describe('with tag', () => {
+            it('should remove overridden rule', () => {
+                let input = 'y { color: red; } y { color: blue; }';
+                let output = 'y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);            
+            });
+
+            it('should not remove rule with different tag', () => {
+                let input = 'y { color: red; } z { color: blue; }';
+                let output = 'y{color:red;}z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should not remove rule without tag', () => {
+                let input = 'y .y { color: red; } .y { color: blue; }';
+                let output = 'y .y{color:red;}.y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should not remove rule without tag when having class on same element', () => {
+                let input = 'y.y { color: red; } .y { color: blue; }';
+                let output = 'y.y{color:red;}.y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should remove rule with tag assumed always set', () => {
+                let input = 'x .y { color: red; } .y { color: blue; }';
+                let output = 'x .y{color:red;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should remove rule with tag assumed always set having class on same element', () => {
+                let input = 'x.y { color: red; } .y { color: blue; }';
+                let output = 'x.y{color:red;}';
+                expect(rmrule(input)).to.equal(output);
+            });
         });
 
         it('should only remove overridden declarations of a rule', () => {

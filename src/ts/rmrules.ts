@@ -37,8 +37,7 @@ function log(fn: Function, name: string): Function {
 */
 function ruleUsesAnyOf(rule: any, anyOf: string[]): boolean {
     if (rule.classNames) {
-        let anyOfClasses = anyOf.filter(sel => sel[0] === '.').map(sel => sel.substr(1));
-        if(rule.classNames.some((className: string) => anyOfClasses.indexOf(className) >= 0)) {
+        if(rule.classNames.some((className: string) => anyOf.some(anyOf => anyOf === '.' + className))) {
             return true;
         } else if (rule.rule) {
             return ruleUsesAnyOf(rule.rule, anyOf);
@@ -77,15 +76,26 @@ function classesAreAlwaysOverriding(a: any[] | undefined, b: any[] | undefined, 
     return true;
 }
 
-function isAlwaysOverridingRule(a: any, b: any, set: string[]): boolean {
-    // TODO: check tag
-    // TODO: check id
-    // TODO: check nested operator
+function idIsAlwaysOverriding(a: any, b: any, set: string[]) {
+    return a === b || (a && !b && set.some(id => id === '#' + a));
+}
 
+function tagIsAlwaysOverriding(a: any, b: any, set: string[]) {
+    return a === b || (a && !b && set.some(id => id === '#' + a));
+}
+
+function isAlwaysOverridingSingleRule(a: any, b: any, set: string[]) {
+    // TODO: check nested operator
+    // TODO: check attributes
+
+    return idIsAlwaysOverriding(a.id, b.id, set) && tagIsAlwaysOverriding(a.tagName, b.tagName, set) && classesAreAlwaysOverriding(a.classNames, b.classNames, set);
+}
+
+function isAlwaysOverridingRule(a: any, b: any, set: string[]): boolean {
     if (!a) {
         return !b;
-    } else if (!b || !classesAreAlwaysOverriding(a.classNames, b.classNames, set)) {
-        return classesAreAlwaysOverriding(a.classNames, [], set) && isAlwaysOverridingRule(a.rule, b, set);
+    } else if (!b || !isAlwaysOverridingSingleRule(a, b, set)) {
+        return isAlwaysOverridingSingleRule(a, {}, set) && isAlwaysOverridingRule(a.rule, b, set);
     } else {
         return isAlwaysOverridingRule(a.rule, b.rule, set);
     }
