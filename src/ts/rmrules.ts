@@ -1,4 +1,4 @@
-import { Stylesheet, Rule } from 'css';
+import { Stylesheet, StyleRules, Rule, Node } from 'css';
 const CssSelectorParser = require('css-selector-parser').CssSelectorParser;
 
 const parser = new CssSelectorParser();
@@ -27,29 +27,24 @@ function selectorUsesAnyOf(selector: any, anyOf: string[]): boolean {
     return false;
 }
 
-export let stylesheet: Stylesheet;
-export type Style = typeof stylesheet.stylesheet;
-
-function toRule<T>(rule: T): Rule | undefined {
-    if ((<any>rule).type === 'rule') {
+function toRule<T extends Node>(rule: T): Rule | undefined {
+    if (rule.type === 'rule') {
         return <Rule>rule;
     }
 }
 
-export default function rmrules(options: Options): (style: Style) => void {
+export function rmrules(options: Options = {}): (style: StyleRules) => void {
     let removeSelectors = options.assumeSelectorsNotUsed || [];
 
-    return (styles: Style) => {
-        if (styles && styles.rules) {
-            styles.rules = styles.rules.filter(rule => {
-                let _rule: Rule | undefined;
-                if ((_rule = toRule(rule)) && _rule.selectors) {
-                    _rule.selectors = _rule.selectors.filter((selector: string) => !selectorUsesAnyOf(parser.parse(selector), removeSelectors));
-                    return _rule.selectors.length > 0;
-                } else {
-                    return true;
-                }
-            });
-        }
+    return (styles: StyleRules) => {
+        styles.rules = styles.rules.filter(rule => {
+            let _rule = toRule(rule);
+            if (_rule && _rule.selectors) {
+                _rule.selectors = _rule.selectors.filter((selector: string) => !selectorUsesAnyOf(parser.parse(selector), removeSelectors));
+                return _rule.selectors.length > 0;
+            } else {
+                return true;
+            }
+        });
     }
 }

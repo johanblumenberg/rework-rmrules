@@ -2,7 +2,7 @@
   "name": "rework-rmrules",
   "version": "1.0.0",
   "description": "Remove css rules based on selectors",
-  "main": "lib/rmrules.js",
+  "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
     "test": "jest"
