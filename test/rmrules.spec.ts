@@ -418,6 +418,64 @@ describe('rmrules', () => {
         */
     });
 
+    describe('error', () => {
+        function rmrule(input: string, options: Options = { assumeSelectorsNotUsed: [ ".x" ], deadRules: Action.ERROR, overriddenRules: Action.ERROR, maxReported: 1 }) {
+            return () => rework(input).use(rmrules(options)).toString({ compress: true });
+        }
+
+        it('should error about simple use of x', () => {
+            let input = '.x { color: red; }';
+            expect(rmrule(input)).to.throw();
+        });
+
+        it('should error about overridden rule with same selectors', () => {
+            let input = '.y { color: red; } .y { color: blue; }';
+            expect(rmrule(input)).to.throw();
+        });
+
+        it('should only error about the first error encountered', () => {
+            let input = '.x { color: red; } .x { background: blue; }';
+            expect(rmrule(input)).to.throw();
+        });
+    });
+
+    describe('warn', () => {
+        function rmrule(input: string, options: Options = { assumeSelectorsNotUsed: [ ".x" ], deadRules: Action.WARN, overriddenRules: Action.WARN, maxReported: 1 }) {
+            return () => rework(input).use(rmrules(options)).toString({ compress: true });
+        }
+
+        it('should warn about simple use of x', () => {
+            let input = '.x{color:red;}';
+            expect(rmrule(input)()).to.equal(input, msg(input));
+        });
+
+        it('should warn about overridden rule with same selectors', () => {
+            let input = '.y{color:red;}.y{color:blue;}';
+            expect(rmrule(input)()).to.equal(input, msg(input));
+        });
+
+        it('should only warn about the first warning encountered', () => {
+            let input = '.x{color:red;}.x{background:blue;}';
+            expect(rmrule(input)()).to.equal(input, msg(input));
+        });
+    });
+
+    describe('ignore', () => {
+        function rmrule(input: string, options: Options = { assumeSelectorsNotUsed: [ ".x" ], deadRules: Action.IGNORE, overriddenRules: Action.IGNORE, maxReported: 1 }) {
+            return () => rework(input).use(rmrules(options)).toString({ compress: true });
+        }
+
+        it('should ignore simple use of x', () => {
+            let input = '.x{color:red;}';
+            expect(rmrule(input)()).to.equal(input, msg(input));
+        });
+
+        it('should ignore overridden rule with same selectors', () => {
+            let input = '.y{color:red;}.y{color:blue;}';
+            expect(rmrule(input)()).to.equal(input, msg(input));
+        });
+    });
+
     describe('can parse', () => {
         function rmrule(input: string) {
             return rework(input).use(rmrules()).toString({ compress: true });

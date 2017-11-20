@@ -1,3 +1,5 @@
+import * as gutil from 'gulp-util';
+import chalk from 'chalk';
 import { Stylesheet, StyleRules, Rule, Declaration, Comment, Node } from 'css';
 const CssSelectorParser = require('css-selector-parser').CssSelectorParser;
 
@@ -17,6 +19,8 @@ export interface Options {
 
     deadRules?: Action;
     overriddenRules?: Action;
+
+    maxReported?: number;
 }
 
 interface RulePosition {
@@ -29,6 +33,17 @@ interface RulePosition {
 interface RuleIndex {
     [hash: string]: number[];
 };
+
+interface Result {
+    errorCount: number;
+    errorReported: number;
+    warnCount: number;
+    warnReported: number;
+
+    maxReported: number;
+};
+
+const NAME = 'rework-rmrules';
 
 function unique<T>(e: T, i: number, arr: T[]) {
     return arr.lastIndexOf(e) === i;
@@ -161,14 +176,18 @@ function toDeclaration<T extends Node>(rule: T): Declaration | undefined {
     }
 }
 
-function removeDeadRules(rules: Node[], assumeSelectorsNotUsed: string[]) {
+function removeDeadRules(result: Result, options: Options, rules: Node[], assumeSelectorsNotUsed: string[]) {
     rules.forEach((rule, index) => {
         let _rule = toRule(rule);
         if (_rule && _rule.selectors) {
             _rule.selectors = _rule.selectors.filter((selectorString: string) => {
                 let selector = parser.parse(selectorString);
 
-                return (selector.type !== 'ruleSet') || !ruleUsesAnyOf(selector.rule, assumeSelectorsNotUsed);
+                if ((selector.type === 'ruleSet') && ruleUsesAnyOf(selector.rule, assumeSelectorsNotUsed)) {
+                    return !error(result, options.deadRules, 'Selector $1 is never used', selectorString);
+                } else {
+                    return true;
+                }
             });
         }
     });
@@ -252,37 +271,88 @@ function overridesAllDeclarations(a: Declaration[], b: Declaration[]) {
     return b.every(b_decoration => a.some(a_decoration => a_decoration.property === b_decoration.property));
 }
 
-function removeOverriddenDeclarations(rules: Node[], overrides: { rule: RulePosition, overrides: RulePosition }[]) {
+function removeOverriddenDeclarations(result: Result, options: Options, rules: Node[], overrides: { rule: RulePosition, overrides: RulePosition }[]) {
     overrides.forEach(({ rule, overrides }) => {
         const a = toRule(rules[rule.rulePos]);
         const b = toRule(rules[overrides.rulePos]);
 
-        if (a && a.declarations && b && b.declarations) {
+        if (a && a.declarations && a.selectors && b && b.declarations) {
             if (b.selectors && b.selectors.length === 1) {
-                b.declarations = b.declarations.filter(node => !containsDeclaration(node, a.declarations || []));
+                b.declarations = b.declarations.filter(node => {
+                    if (a.declarations && a.selectors && b.selectors && containsDeclaration(node, a.declarations)) {
+                        return !error(result, options.overriddenRules, 'Selector $1 always overides css property $2 of $3', a.selectors[rule.selectorPos], (<any>node).property, b.selectors[overrides.selectorPos]);
+                    } else {
+                        return true;
+                    }
+                });
             } else if (b.selectors && b.selectors.length > 1) {
                 if (overridesAllDeclarations(a.declarations, b.declarations)) {
-                    b.selectors.splice(overrides.selectorPos, 1);
+                    if (error(result, options.overriddenRules, 'Selector $1 always overides all css properties of $2', a.selectors[rule.selectorPos], b.selectors[overrides.selectorPos])) {
+                        b.selectors.splice(overrides.selectorPos, 1);
+                    }
                 }
             }
         }
     });
 }
 
+function format(msg: string, args: string[]) {
+    return msg.replace(/\$(.)/g, x => '[' + chalk.gray(args[parseInt(x.substr(1)) - 1]) + ']');
+}
+
+function error(result: Result, action: Action | undefined, msg: string, ...args: string[]) {
+    if (action === Action.REMOVE) {
+        return true;
+    } else {
+        if (action === Action.ERROR) {
+            result.errorCount++;
+            if (result.maxReported-- > 0) {
+                result.errorReported++;
+                gutil.log(NAME + ': [' + chalk.red('ERROR') + '] ' + format(msg, args));
+            }
+        } else if (action === Action.WARN) {
+            result.warnCount++;
+            if (result.maxReported-- > 0) {
+                result.warnReported++;
+                gutil.log(NAME + ': [' + chalk.black('WARN') + '] ' + format(msg, args));
+            }
+        }
+        return false;
+    }
+}
+
 export function rmrules(options: Options = {}): (style: StyleRules) => void {
     let assumeSelectorsNotUsed = options.assumeSelectorsNotUsed || [];
     let assumeSelectorsSet = options.assumeSelectorsSet || [];
-    
+    let result: Result = {
+        errorCount: 0,
+        errorReported: 0,
+        warnCount: 0,
+        warnReported: 0,
+
+        maxReported: (options.maxReported === undefined) ? 20 : options.maxReported
+    };
+
     return (styles: StyleRules) => {
-        removeDeadRules(styles.rules, assumeSelectorsNotUsed);
+        removeDeadRules(result, options, styles.rules, assumeSelectorsNotUsed);
 
         let rules = collectRules(styles.rules, assumeSelectorsSet);
         let overrides = calculateOverridingRules(rules, assumeSelectorsSet);
-        removeOverriddenDeclarations(styles.rules, overrides);
+        removeOverriddenDeclarations(result, options, styles.rules, overrides);
         
         styles.rules = styles.rules.filter((rule, index) => {
             let _rule = toRule(rule);
             return !_rule || ((_rule.selectors && _rule.selectors.length) && (_rule.declarations && _rule.declarations.length));
         });
+
+        if (result.errorReported < result.errorCount) {
+            gutil.log(NAME + ': ' + (result.errorCount - result.errorReported) + ' more errors...');
+        }
+        if (result.warnReported < result.warnCount) {
+            gutil.log(NAME + ': ' + (result.warnCount - result.warnReported) + ' more warnings...');
+        }
+        if (result.errorCount > 0) {
+            throw new Error(NAME + ': There were errors, see the log for details');
+        }
     };
 }
