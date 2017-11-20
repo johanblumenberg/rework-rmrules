@@ -96,13 +96,22 @@ function nestingOperatorIsAlwaysOverriding(a: any, b: any, disallowNestingOperat
     }
 }
 
-function isAlwaysOverridingSingleRule(a: any, b: any, set: string[], disallowNestingOperatorOverride: boolean) {
-    // TODO: check attributes
+function attributesAreAlwaysOverriding(a: any[] | undefined, b: any[] | undefined) {
+    if (!a || !b) {
+        return !a && !b;
+    } else if (a.length !== b.length) {
+        return false;
+    } else {
+        return a.every(a => b.some(b => a.name === b.name && a.operator === b.operator && a.valueType === 'string' && b.valueType === 'string' && a.value === b.value));
+    }
+}
 
+function isAlwaysOverridingSingleRule(a: any, b: any, set: string[], disallowNestingOperatorOverride: boolean) {
     return (
         idIsAlwaysOverriding(a.id, b.id, set) && 
         tagIsAlwaysOverriding(a.tagName, b.tagName, set) && 
         nestingOperatorIsAlwaysOverriding(a.nestingOperator, b.nestingOperator, disallowNestingOperatorOverride) && 
+        attributesAreAlwaysOverriding(a.attrs, b.attrs) &&
         classesAreAlwaysOverriding(a.classNames, b.classNames, set));
 }
 

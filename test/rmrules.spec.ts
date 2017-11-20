@@ -335,6 +335,26 @@ describe('rmrules', () => {
             });
         });
 
+        describe('attributes', () => {
+            it('should remove overridden rule', () => {
+                let input = '[target="_blank"] { color: red; } [target="_blank"] { color: blue; }';
+                let output = '[target="_blank"]{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should not remove rule with different attribute', () => {
+                let input = '[target="_blank"] { color: red; } [target="_top"] { color: blue; }';
+                let output = '[target="_blank"]{color:red;}[target="_top"]{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('should not remove rule without attribute', () => {
+                let input = 'a[target="_blank"] { color: red; } a { color: blue; }';
+                let output = 'a[target="_blank"]{color:red;}a{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+        });
+
         it('should only remove overridden declarations of a rule', () => {
             let input = '.y { color: red; background: green; } .y { color: blue; }';
             let output = '.y{background:green;}.y{color:blue;}';
