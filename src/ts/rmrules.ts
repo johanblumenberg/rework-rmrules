@@ -269,63 +269,11 @@ function removeOverriddenDeclarations(rules: Node[], overrides: { rule: RulePosi
     });
 }
 
-var log_times: { [fn: string]: { totalTime: number, ownTime: number, invocations: number} } = {};
-var log_stack: number[] = [];
-
-function log(fn: Function, name: string, log: boolean): Function {
-    log_times[name] = { totalTime: 0, ownTime: 0, invocations: 0 };
-
-    return function (this: any) {
-        if (log) {
-            console.log(name, 'called');
-        }
-        log_stack.unshift(0);
-        let t0 = new Date().getTime();
-        let ret = fn.apply(this, arguments);
-        let t1 = new Date().getTime();
-        let tm = t1 - t0;
-        let tc = <number>(log_stack.shift());
-        let to = tm - tc;
-        log_times[name].invocations++;
-        log_times[name].totalTime += tm;
-        log_times[name].ownTime += to;
-        if (log_stack.length) {
-            log_stack[0] += tm;
-        }
-        if (log) {
-            console.log(name, 'returning', ret);
-        }
-        return ret;
-    };
-}
-
-function log_reset() {
-    for (let fn in log_times) {
-        log_times[fn] = { totalTime: 0, ownTime: 0, invocations: 0 };
-    }
-}
-
-function log_print() {
-    for (let fn in log_times) {
-        console.log(fn + ':', log_times[fn]);
-    }
-}
-
-[ ].forEach(fn => {
-    eval(fn + '=log(' + fn + ',"' + fn + '", true);');
-});
-
-[ 'removeOverriddenDeclarations', 'calculateOverridingRules', 'collectRules', 'removeDeadRules', 'overridesAllDeclarations', 'isAlwaysOverridingRule', 'isAlwaysOverridingSingleRule', 'classesAreAlwaysOverriding' ].forEach(fn => {
-    eval(fn + '=log(' + fn + ',"' + fn + '", false);');
-});
-
 export function rmrules(options: Options = {}): (style: StyleRules) => void {
     let assumeSelectorsNotUsed = options.assumeSelectorsNotUsed || [];
     let assumeSelectorsSet = options.assumeSelectorsSet || [];
     
     return (styles: StyleRules) => {
-        log_reset();
-
         removeDeadRules(styles.rules, assumeSelectorsNotUsed);
 
         let rules = collectRules(styles.rules, assumeSelectorsSet);
@@ -336,7 +284,5 @@ export function rmrules(options: Options = {}): (style: StyleRules) => void {
             let _rule = toRule(rule);
             return !_rule || ((_rule.selectors && _rule.selectors.length) && (_rule.declarations && _rule.declarations.length));
         });
-        
-        log_print();
     };
 }
