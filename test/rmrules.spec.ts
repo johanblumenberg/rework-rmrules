@@ -10,7 +10,7 @@ describe('rmrules', () => {
         function rmrule(input: string, options: Options = { assumeSelectorsNotUsed: [ ".x" ], deadRules: Action.REMOVE }) {
             return rework(input).use(rmrules(options)).toString({ compress: true });
         }
-    
+
         it('should remove simple use of x', () => {
             let input = '.x { color: red; }';
             let output = '';
@@ -76,60 +76,60 @@ describe('rmrules', () => {
         function rmrule(input: string, options: Options = { assumeSelectorsSet: [ ".x", "#x", "x" ], overriddenRules: Action.REMOVE }) {
             return rework(input).use(rmrules(options)).toString({ compress: true });
         }
-    
+
         it('should remove overridden rule with same selectors', () => {
             let input = '.y { color: red; } .y { color: blue; }';
             let output = '.y{color:blue;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it('should remove overridden rule with same selectors, classes in different order', () => {
             let input = '.y.z { color: red; } .z.y { color: blue; }';
             let output = '.z.y{color:blue;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it('should remove overridden rule, more specific with parent selector before', () => {
             let input = '.x .y { color: red; } .y { color: blue; }';
             let output = '.x .y{color:red;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it('should remove overridden rule, more specific with parent selector after', () => {
             let input = '.y { color: red; } .x .y { color: blue; }';
             let output = '.x .y{color:blue;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it('should remove overridden rule, more specific with child selector', () => {
             let input = '.y .x { color: red; } .y { color: blue; }';
             let output = '.y .x{color:red;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it('should remove overridden rule, more specific with extra class', () => {
             let input = '.y.x { color: red; } .y { color: blue; }';
             let output = '.y.x{color:red;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it('should remove overridden rule, more specific with extra class, classes in different order', () => {
             let input = '.y.z.x { color: red; } .z.y { color: blue; }';
             let output = '.y.z.x{color:red;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it('should not remove overridden rule if more specific but not always set', () => {
             let input = '.y { color: red; } .y .z { color: blue; }';
             let output = '.y{color:red;}.y .z{color:blue;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         describe('with id', () => {
             it('should remove overridden rule', () => {
                 let input = '#y { color: red; } #y { color: blue; }';
                 let output = '#y{color:blue;}';
-                expect(rmrule(input)).to.equal(output);            
+                expect(rmrule(input)).to.equal(output);
             });
 
             it('should not remove rule with different id', () => {
@@ -167,7 +167,7 @@ describe('rmrules', () => {
             it('should remove overridden rule', () => {
                 let input = 'y { color: red; } y { color: blue; }';
                 let output = 'y{color:blue;}';
-                expect(rmrule(input)).to.equal(output);            
+                expect(rmrule(input)).to.equal(output);
             });
 
             it('should not remove rule with different tag', () => {
@@ -201,22 +201,156 @@ describe('rmrules', () => {
             });
         });
 
+        describe('with nesting operator', () => {
+            it('empty overrides empty', () => {
+                let input = '.y .z { color: red; } .y .z { color: blue; }';
+                let output = '.y .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('> overrides >', () => {
+                let input = '.y > .z { color: red; } .y > .z { color: blue; }';
+                let output = '.y > .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('~ overrides ~', () => {
+                let input = '.y ~ .z { color: red; } .y ~ .z { color: blue; }';
+                let output = '.y ~ .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('+ overrides +', () => {
+                let input = '.y + .z { color: red; } .y + .z { color: blue; }';
+                let output = '.y + .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('empty overrides >', () => {
+                let input = '.y > .z { color: red; } .y .z { color: blue; }';
+                let output = '.y .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('> does not override empty', () => {
+                let input = '.y .z { color: red; } .y > .z { color: blue; }';
+                let output = '.y .z{color:red;}.y > .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('~ overrides +', () => {
+                let input = '.y + .z { color: red; } .y ~ .z { color: blue; }';
+                let output = '.y ~ .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('+ does not override ~', () => {
+                let input = '.y ~ .z { color: red; } .y + .z { color: blue; }';
+                let output = '.y ~ .z{color:red;}.y + .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('+ does not override empty', () => {
+                let input = '.y .z { color: red; } .y + .z { color: blue; }';
+                let output = '.y .z{color:red;}.y + .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('+ does not override >', () => {
+                let input = '.y > .z { color: red; } .y + .z { color: blue; }';
+                let output = '.y > .z{color:red;}.y + .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('~ does not override empty', () => {
+                let input = '.y .z { color: red; } .y ~ .z { color: blue; }';
+                let output = '.y .z{color:red;}.y ~ .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('~ does not override >', () => {
+                let input = '.y > .z { color: red; } .y ~ .z { color: blue; }';
+                let output = '.y > .z{color:red;}.y ~ .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('> does not override +', () => {
+                let input = '.y + .z { color: red; } .y > .z { color: blue; }';
+                let output = '.y + .z{color:red;}.y > .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('> does not override ~', () => {
+                let input = '.y ~ .z { color: red; } .y > .z { color: blue; }';
+                let output = '.y ~ .z{color:red;}.y > .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('empty does not override +', () => {
+                let input = '.y + .z { color: red; } .y .z { color: blue; }';
+                let output = '.y + .z{color:red;}.y .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('empty does not override ~', () => {
+                let input = '.y ~ .z { color: red; } .y .z { color: blue; }';
+                let output = '.y ~ .z{color:red;}.y .z{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('x > y should not override y', () => {
+                let input = 'x > y { color: red; } y { color: blue; }';
+                let output = 'x > y{color:red;}y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('x + y should not override y', () => {
+                let input = 'x + y { color: red; } y { color: blue; }';
+                let output = 'x + y{color:red;}y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('x ~ y should not override y', () => {
+                let input = 'x ~ y { color: red; } y { color: blue; }';
+                let output = 'x ~ y{color:red;}y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('x y should override x > y', () => {
+                let input = 'x > y { color: red; } x y { color: blue; }';
+                let output = 'x y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('x y should not override x + y', () => {
+                let input = 'x + y { color: red; } x y { color: blue; }';
+                let output = 'x + y{color:red;}x y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+
+            it('x y should not override x ~ y', () => {
+                let input = 'x ~ y { color: red; } x y { color: blue; }';
+                let output = 'x ~ y{color:red;}x y{color:blue;}';
+                expect(rmrule(input)).to.equal(output);
+            });
+        });
+
         it('should only remove overridden declarations of a rule', () => {
             let input = '.y { color: red; background: green; } .y { color: blue; }';
             let output = '.y{background:green;}.y{color:blue;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it ('should only remove the affeted rule when several rules have the same declaration', () => {
             let input = '.y, .z { color: red; } .y { color: blue; }';
             let output = '.z{color:red;}.y{color:blue;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         it ('should not remove a rule if all declarations are not overridden', () => {
             let input = '.y, .z { color: red; background: green; } .y { color: blue; }';
             let output = '.y,.z{color:red;background:green;}.y{color:blue;}';
-            expect(rmrule(input)).to.equal(output);            
+            expect(rmrule(input)).to.equal(output);
         });
 
         /* TODO: leave for later, it's a tricky corner case

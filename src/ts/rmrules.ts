@@ -84,20 +84,35 @@ function tagIsAlwaysOverriding(a: any, b: any, set: string[]) {
     return a === b || (a && !b && set.some(id => id === '#' + a));
 }
 
-function isAlwaysOverridingSingleRule(a: any, b: any, set: string[]) {
-    // TODO: check nested operator
-    // TODO: check attributes
-
-    return idIsAlwaysOverriding(a.id, b.id, set) && tagIsAlwaysOverriding(a.tagName, b.tagName, set) && classesAreAlwaysOverriding(a.classNames, b.classNames, set);
+function nestingOperatorIsAlwaysOverriding(a: any, b: any, disallowNestingOperatorOverride: boolean) {
+    if (a == b) {
+        return true;
+    } else if (!disallowNestingOperatorOverride && !a && b === '>') {
+        return true;
+    } else if (!disallowNestingOperatorOverride && a === '~' && b === '+') {
+        return true;
+    } else {
+        return false;
+    }
 }
 
-function isAlwaysOverridingRule(a: any, b: any, set: string[]): boolean {
+function isAlwaysOverridingSingleRule(a: any, b: any, set: string[], disallowNestingOperatorOverride: boolean) {
+    // TODO: check attributes
+
+    return (
+        idIsAlwaysOverriding(a.id, b.id, set) && 
+        tagIsAlwaysOverriding(a.tagName, b.tagName, set) && 
+        nestingOperatorIsAlwaysOverriding(a.nestingOperator, b.nestingOperator, disallowNestingOperatorOverride) && 
+        classesAreAlwaysOverriding(a.classNames, b.classNames, set));
+}
+
+function isAlwaysOverridingRule(a: any, b: any, set: string[], disallowNestingOperatorOverride: boolean): boolean {
     if (!a) {
         return !b;
-    } else if (!b || !isAlwaysOverridingSingleRule(a, b, set)) {
-        return isAlwaysOverridingSingleRule(a, {}, set) && isAlwaysOverridingRule(a.rule, b, set);
+    } else if (!b || !isAlwaysOverridingSingleRule(a, b, set, disallowNestingOperatorOverride)) {
+        return isAlwaysOverridingSingleRule(a, {}, set, disallowNestingOperatorOverride) && isAlwaysOverridingRule(a.rule, b, set, disallowNestingOperatorOverride);
     } else {
-        return isAlwaysOverridingRule(a.rule, b.rule, set);
+        return isAlwaysOverridingRule(a.rule, b.rule, set, disallowNestingOperatorOverride);
     }
 }
 //isAlwaysOverridingRule = log(isAlwaysOverridingRule, 'isAlwaysOverridingRule');
@@ -158,10 +173,10 @@ function calculateOverridingRules(rules: RuleIndex[], assumeSelectorsSet: string
 
     rules.forEach((a, index) => {
         rules.slice(index + 1).forEach(b => {
-            if (isAlwaysOverridingRule(b.rule, a.rule, assumeSelectorsSet)) {
+            if (isAlwaysOverridingRule(b.rule, a.rule, assumeSelectorsSet, false)) {
                 // Also covers the case when the rules are identical
                 result.push({ rule: b, overrides: a });
-            } else if (isAlwaysOverridingRule(a.rule, b.rule, assumeSelectorsSet)) {
+            } else if (isAlwaysOverridingRule(a.rule, b.rule, assumeSelectorsSet, true)) {
                 result.push({ rule: a, overrides: b });
             }
         });
