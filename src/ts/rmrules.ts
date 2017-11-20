@@ -19,22 +19,21 @@ export interface Options {
     overriddenRules?: Action;
 }
 
-interface RuleIndex {
+interface RulePosition {
     rule: any;
-    ruleIndex: number;
-    selectorIndex: number;
+    hash: string;
+    rulePos: number;
+    selectorPos: number;
 };
-/*
-function log(fn: Function, name: string): Function {
-    return function () {
-        console.log(name);
-        console.log.apply(null, arguments);
-        let ret = fn.apply(this, arguments);
-        console.log(' - ', ret);
-        return ret;
-    };
+
+interface RuleIndex {
+    [hash: string]: number[];
+};
+
+function unique<T>(e: T, i: number, arr: T[]) {
+    return arr.lastIndexOf(e) === i;
 }
-*/
+
 function ruleUsesAnyOf(rule: any, anyOf: string[]): boolean {
     if (rule.classNames) {
         if(rule.classNames.some((className: string) => anyOf.some(anyOf => anyOf === '.' + className))) {
@@ -57,7 +56,11 @@ function classesAreAlwaysOverriding(a: any[] | undefined, b: any[] | undefined, 
     if (b) {
         b.forEach(className => _b[className] = true);
     }
-    set.filter(className => className[0] === '.').map(className => className.substr(1)).forEach(className => _s[className] = true);
+    set.forEach(className => {
+        if (className[0] === '.') {
+            _s[className.substr(1)] = true;
+        }
+    });
 
     // Each of a must exist in b or set, or there are cases when a applies but not b
     for (let className in _a) {
@@ -81,7 +84,7 @@ function idIsAlwaysOverriding(a: any, b: any, set: string[]) {
 }
 
 function tagIsAlwaysOverriding(a: any, b: any, set: string[]) {
-    return a === b || (a && !b && set.some(id => id === '#' + a));
+    return a === b || (a && !b && set.indexOf(a) >= 0);
 }
 
 function nestingOperatorIsAlwaysOverriding(a: any, b: any, disallowNestingOperatorOverride: boolean) {
@@ -106,12 +109,25 @@ function attributesAreAlwaysOverriding(a: any[] | undefined, b: any[] | undefine
     }
 }
 
+function pseudosAreAlwaysOverriding(a: any[] | undefined, b: any[] | undefined) {
+    if (!a || !b) {
+        return !a && !b;
+    } else if (a.length !== b.length) {
+        return false;
+    } else {
+        return a.every(a => {
+            return Object.keys(a).every(ak => b.some(b => b[ak] === a[ak]));
+        });
+    }
+}
+
 function isAlwaysOverridingSingleRule(a: any, b: any, set: string[], disallowNestingOperatorOverride: boolean) {
     return (
         idIsAlwaysOverriding(a.id, b.id, set) && 
         tagIsAlwaysOverriding(a.tagName, b.tagName, set) && 
         nestingOperatorIsAlwaysOverriding(a.nestingOperator, b.nestingOperator, disallowNestingOperatorOverride) && 
         attributesAreAlwaysOverriding(a.attrs, b.attrs) &&
+        pseudosAreAlwaysOverriding(a.pseudos, b.pseudos) &&
         classesAreAlwaysOverriding(a.classNames, b.classNames, set));
 }
 
@@ -124,7 +140,6 @@ function isAlwaysOverridingRule(a: any, b: any, set: string[], disallowNestingOp
         return isAlwaysOverridingRule(a.rule, b.rule, set, disallowNestingOperatorOverride);
     }
 }
-//isAlwaysOverridingRule = log(isAlwaysOverridingRule, 'isAlwaysOverridingRule');
 
 function containsDeclaration(node: Node, declarations: Array<Declaration | Comment>) {
     const decl = toDeclaration(node);
@@ -159,34 +174,73 @@ function removeDeadRules(rules: Node[], assumeSelectorsNotUsed: string[]) {
     });
 }
 
-function collectRules(rules: Node[]) {
-    let result: RuleIndex[] = [];
+function topLevelSelectors(rule: any) {
+    let result: string[] = [];
 
-    rules.forEach((rule, ruleIndex) => {
+    if (rule.classNames) {
+        rule.classNames.forEach((className: string) => result.push('.' + className));
+    }
+    if (rule.tagName) {
+        result.push(rule.tagName);
+    }
+    if (rule.id) {
+        result.push('#' + rule.id);
+    }
+
+    return result;
+}
+
+function allSelectors(rule: any): string[] {
+    if (rule.rule) {
+        return topLevelSelectors(rule).concat(allSelectors(rule.rule));
+    } else {
+        return topLevelSelectors(rule);
+    }
+}
+
+function selectorHash(rule: any, assumeSelectorsSet: string[]): string {
+    let result = allSelectors(rule).filter(unique).filter(sel => assumeSelectorsSet.indexOf(sel) < 0).sort();
+    return JSON.stringify(result);
+}
+
+function collectRules(rules: Node[], assumeSelectorsSet: string[]) {
+    let list: RulePosition[] = [];
+    let index: RuleIndex = {};
+
+    rules.forEach((rule, rulePos) => {
         let _rule = toRule(rule);
         if (_rule && _rule.selectors) {
-            _rule.selectors.forEach((selectorString, selectorIndex) => {
+            _rule.selectors.forEach((selectorString, selectorPos) => {
                 let selector = parser.parse(selectorString);
 
                 if (selector.type === 'ruleSet') {
-                    result.push({ruleIndex, selectorIndex, rule: selector.rule});
+                    let hash = selectorHash(selector.rule, assumeSelectorsSet);
+                    if (!index[hash]) {
+                        index[hash] = [];
+                    }
+                    index[hash].push(list.length);
+                    list.push({rulePos, selectorPos, hash, rule: selector.rule});                    
                 }
             });
         }
     });
-    return result;
+    return { list, index };
 }
 
-function calculateOverridingRules(rules: RuleIndex[], assumeSelectorsSet: string[]) {
-    let result: { rule: RuleIndex, overrides: RuleIndex }[] = [];
+function calculateOverridingRules(rules: { list: RulePosition[], index: RuleIndex }, assumeSelectorsSet: string[]) {
+    let result: { rule: RulePosition, overrides: RulePosition }[] = [];
 
-    rules.forEach((a, index) => {
-        rules.slice(index + 1).forEach(b => {
-            if (isAlwaysOverridingRule(b.rule, a.rule, assumeSelectorsSet, false)) {
-                // Also covers the case when the rules are identical
-                result.push({ rule: b, overrides: a });
-            } else if (isAlwaysOverridingRule(a.rule, b.rule, assumeSelectorsSet, true)) {
-                result.push({ rule: a, overrides: b });
+    rules.list.forEach(a => {
+        rules.index[a.hash].forEach(i => {
+            let b = rules.list[i];
+
+            if (a.rulePos < b.rulePos) {
+                if (isAlwaysOverridingRule(b.rule, a.rule, assumeSelectorsSet, false)) {
+                    // Also covers the case when the rules are identical
+                    result.push({ rule: b, overrides: a });
+                } else if (isAlwaysOverridingRule(a.rule, b.rule, assumeSelectorsSet, true)) {
+                    result.push({ rule: a, overrides: b });
+                }
             }
         });
     });
@@ -198,31 +252,83 @@ function overridesAllDeclarations(a: Declaration[], b: Declaration[]) {
     return b.every(b_decoration => a.some(a_decoration => a_decoration.property === b_decoration.property));
 }
 
-function removeOverriddenDeclarations(rules: Node[], overrides: { rule: RuleIndex, overrides: RuleIndex }[]) {
+function removeOverriddenDeclarations(rules: Node[], overrides: { rule: RulePosition, overrides: RulePosition }[]) {
     overrides.forEach(({ rule, overrides }) => {
-        const a = toRule(rules[rule.ruleIndex]);
-        const b = toRule(rules[overrides.ruleIndex]);
+        const a = toRule(rules[rule.rulePos]);
+        const b = toRule(rules[overrides.rulePos]);
 
         if (a && a.declarations && b && b.declarations) {
             if (b.selectors && b.selectors.length === 1) {
                 b.declarations = b.declarations.filter(node => !containsDeclaration(node, a.declarations || []));
             } else if (b.selectors && b.selectors.length > 1) {
                 if (overridesAllDeclarations(a.declarations, b.declarations)) {
-                    b.selectors.splice(overrides.selectorIndex, 1);
+                    b.selectors.splice(overrides.selectorPos, 1);
                 }
             }
         }
     });
 }
 
+var log_times: { [fn: string]: { totalTime: number, ownTime: number, invocations: number} } = {};
+var log_stack: number[] = [];
+
+function log(fn: Function, name: string, log: boolean): Function {
+    log_times[name] = { totalTime: 0, ownTime: 0, invocations: 0 };
+
+    return function (this: any) {
+        if (log) {
+            console.log(name, 'called');
+        }
+        log_stack.unshift(0);
+        let t0 = new Date().getTime();
+        let ret = fn.apply(this, arguments);
+        let t1 = new Date().getTime();
+        let tm = t1 - t0;
+        let tc = <number>(log_stack.shift());
+        let to = tm - tc;
+        log_times[name].invocations++;
+        log_times[name].totalTime += tm;
+        log_times[name].ownTime += to;
+        if (log_stack.length) {
+            log_stack[0] += tm;
+        }
+        if (log) {
+            console.log(name, 'returning', ret);
+        }
+        return ret;
+    };
+}
+
+function log_reset() {
+    for (let fn in log_times) {
+        log_times[fn] = { totalTime: 0, ownTime: 0, invocations: 0 };
+    }
+}
+
+function log_print() {
+    for (let fn in log_times) {
+        console.log(fn + ':', log_times[fn]);
+    }
+}
+
+[ ].forEach(fn => {
+    eval(fn + '=log(' + fn + ',"' + fn + '", true);');
+});
+
+[ 'removeOverriddenDeclarations', 'calculateOverridingRules', 'collectRules', 'removeDeadRules', 'overridesAllDeclarations', 'isAlwaysOverridingRule', 'isAlwaysOverridingSingleRule', 'classesAreAlwaysOverriding' ].forEach(fn => {
+    eval(fn + '=log(' + fn + ',"' + fn + '", false);');
+});
+
 export function rmrules(options: Options = {}): (style: StyleRules) => void {
     let assumeSelectorsNotUsed = options.assumeSelectorsNotUsed || [];
     let assumeSelectorsSet = options.assumeSelectorsSet || [];
     
     return (styles: StyleRules) => {
+        log_reset();
+
         removeDeadRules(styles.rules, assumeSelectorsNotUsed);
 
-        let rules = collectRules(styles.rules);
+        let rules = collectRules(styles.rules, assumeSelectorsSet);
         let overrides = calculateOverridingRules(rules, assumeSelectorsSet);
         removeOverriddenDeclarations(styles.rules, overrides);
         
@@ -230,5 +336,7 @@ export function rmrules(options: Options = {}): (style: StyleRules) => void {
             let _rule = toRule(rule);
             return !_rule || ((_rule.selectors && _rule.selectors.length) && (_rule.declarations && _rule.declarations.length));
         });
-    }
+        
+        log_print();
+    };
 }
