@@ -18,10 +18,20 @@ export interface Options {
     assumeSelectorsNotUsed?: string[];
     assumeSelectorsSet?: string[];
 
-    deadRules?: Action;
-    overriddenRules?: Action;
+    actOnDeadRules?: Action;
+    actOnOverriddenRules?: Action;
 
     maxReported?: number;
+}
+
+export interface OptionsImpl {
+    assumeSelectorsNotUsed: string[];
+    assumeSelectorsSet: string[];
+
+    actOnDeadRules: Action;
+    actOnOverriddenRules: Action;
+
+    maxReported: number;
 }
 
 interface RulePosition {
@@ -43,6 +53,10 @@ interface Result {
 
     maxReported: number;
 };
+
+type _Declaration = Declaration | undefined;
+type _Node = Node | undefined;
+type _Rule = Rule | undefined;
 
 const NAME = 'rework-rmrules';
 
@@ -157,27 +171,32 @@ function isAlwaysOverridingRule(a: any, b: any, set: string[], disallowNestingOp
     }
 }
 
-function containsDeclaration(node: Node, declarations: Array<Declaration | Comment>) {
+function findDeclaration(node: Node, declarations: Array<Declaration | Comment>): _Declaration {
     const decl = toDeclaration(node);
-    return decl && declarations.some(node => {
+    return decl && declarations.find(node => {
         let decl2 = toDeclaration(node);
         return !!decl2 && decl2.property === decl.property;
     });
 }
 
-function toRule<T extends Node>(rule: T): Rule | undefined {
+function firstDeclaration(node: Node): _Declaration {
+    let rule = toRule(node);
+    return rule && rule.declarations && rule.declarations.find(node => !!toDeclaration(node));
+}
+
+function toRule<T extends Node>(rule: T): _Rule {
     if (rule.type === 'rule') {
         return <Rule>rule;
     }
 }
 
-function toDeclaration<T extends Node>(rule: T): Declaration | undefined {
+function toDeclaration<T extends Node>(rule: T): _Declaration {
     if (rule.type === 'declaration') {
         return <Declaration>rule;
     }
 }
 
-function removeDeadRules(result: Result, options: Options, smc: any, rules: Node[], assumeSelectorsNotUsed: string[]) {
+function removeDeadRules(result: Result, options: OptionsImpl, smc: any, rules: Node[], assumeSelectorsNotUsed: string[]) {
     rules.forEach((rule, index) => {
         const _rule = toRule(rule);
         if (_rule && _rule.selectors) {
@@ -185,7 +204,7 @@ function removeDeadRules(result: Result, options: Options, smc: any, rules: Node
                 let selector = parser.parse(selectorString);
 
                 if ((selector.type === 'ruleSet') && ruleUsesAnyOf(selector.rule, assumeSelectorsNotUsed)) {
-                    return !error(result, options.deadRules, smc, _rule, undefined, 'Selector $1 is never used', selectorString);
+                    return !error(result, options.actOnDeadRules, smc, firstDeclaration(_rule), _rule, undefined, undefined, 'Selector $1 is never used', selectorString);
                 } else {
                     return true;
                 }
@@ -272,23 +291,24 @@ function overridesAllDeclarations(a: Declaration[], b: Declaration[]) {
     return b.every(b_decoration => a.some(a_decoration => a_decoration.property === b_decoration.property));
 }
 
-function removeOverriddenDeclarations(result: Result, options: Options, smc: any, rules: Node[], overrides: { rule: RulePosition, overrides: RulePosition }[]) {
+function removeOverriddenDeclarations(result: Result, options: OptionsImpl, smc: any, rules: Node[], overrides: { rule: RulePosition, overrides: RulePosition }[]) {
     overrides.forEach(({ rule, overrides }) => {
         const a = toRule(rules[rule.rulePos]);
         const b = toRule(rules[overrides.rulePos]);
 
         if (a && a.declarations && a.selectors && b && b.declarations) {
             if (b.selectors && b.selectors.length === 1) {
-                b.declarations = b.declarations.filter(node => {
-                    if (a.declarations && a.selectors && b.selectors && containsDeclaration(node, a.declarations)) {
-                        return !error(result, options.overriddenRules, smc, a, b, 'Selector $1 always overides css property $2 of $3', a.selectors[rule.selectorPos], (<any>node).property, b.selectors[overrides.selectorPos]);
+                b.declarations = b.declarations.filter(overriddenDeclaration => {
+                    let overridingDeclaration = findDeclaration(overriddenDeclaration, a.declarations!);
+                    if (overridingDeclaration) {
+                        return !error(result, options.actOnOverriddenRules, smc, overridingDeclaration, a, overriddenDeclaration, b, 'Selector $1 always overides css property $2 of $3', a.selectors![rule.selectorPos], (<any>overridingDeclaration).property, b.selectors![overrides.selectorPos]);
                     } else {
                         return true;
                     }
                 });
             } else if (b.selectors && b.selectors.length > 1) {
                 if (overridesAllDeclarations(a.declarations, b.declarations)) {
-                    if (error(result, options.overriddenRules, smc, a, b, 'Selector $1 always overides all css properties of $2', a.selectors[rule.selectorPos], b.selectors[overrides.selectorPos])) {
+                    if (error(result, options.actOnOverriddenRules, smc, firstDeclaration(a), a, firstDeclaration(b), b, 'Selector $1 always overides all css properties of $2', a.selectors[rule.selectorPos], b.selectors[overrides.selectorPos])) {
                         b.selectors.splice(overrides.selectorPos, 1);
                     }
                 }
@@ -310,16 +330,20 @@ function position(smc: any, source: string | undefined, position: Position) {
     }
 }
 
-function logPosition(smc: any, rule: Node, overrides: Node | undefined) {
-    if (rule.position && rule.position.start) {
-        gutil.log(NAME + ':    rule at:   ' + chalk.grey(position(smc, rule.position.source, rule.position.start)));
+function logPosition(smc: any, decl: _Declaration, rule: Node, overridesDecl: _Declaration, overridesRule: _Node) {
+    if (decl && decl.position && decl.position.start && rule.position && rule.position.start) {
+        gutil.log(NAME + ':  at:');
+        gutil.log(NAME + ':    property: ' + chalk.grey(position(smc, decl.position.source, decl.position.start)));
+        gutil.log(NAME + ':    rule:     ' + chalk.grey(position(smc, rule.position.source, rule.position.start)));
     }
-    if (overrides && overrides.position && overrides.position.start) {
-        gutil.log(NAME + ':    overrides: ' + chalk.grey(position(smc, overrides.position.source, overrides.position.start)));
+    if (overridesDecl && overridesDecl.position && overridesDecl.position.start && overridesRule && overridesRule.position && overridesRule.position.start) {
+        gutil.log(NAME + ':  overrides:');
+        gutil.log(NAME + ':    property: ' + chalk.grey(position(smc, overridesDecl.position.source, overridesDecl.position.start)));
+        gutil.log(NAME + ':    rule:     ' + chalk.grey(position(smc, overridesRule.position.source, overridesRule.position.start)));
     }
 }
 
-function error(result: Result, action: Action | undefined, smc: any, rule: Node, overrides: Node | undefined, msg: string, ...args: string[]) {
+function error(result: Result, action: Action, smc: any, decl: _Declaration, rule: Node, overridesDecl: _Declaration, overridesRule: _Node, msg: string, ...args: string[]) {
     if (action === Action.REMOVE) {
         return true;
     } else {
@@ -328,23 +352,27 @@ function error(result: Result, action: Action | undefined, smc: any, rule: Node,
             if (result.maxReported-- > 0) {
                 result.errorReported++;
                 gutil.log(NAME + ': [' + chalk.redBright('ERROR') + '] ' + format(msg, args));
-                logPosition(smc, rule, overrides);
+                logPosition(smc, decl, rule, overridesDecl, overridesRule);
             }
         } else if (action === Action.WARN) {
             result.warnCount++;
             if (result.maxReported-- > 0) {
                 result.warnReported++;
                 gutil.log(NAME + ': [' + chalk.black('WARN') + '] ' + format(msg, args));
-                logPosition(smc, rule, overrides);
+                logPosition(smc, decl, rule, overridesDecl, overridesRule);
             }
         }
         return false;
     }
 }
 
+// TODO: Don't override declarations with !important
+// TODO: Suggest to combine rules where there is a more specific rule, .dark .x { a: 3; } .x { b: 2; }  =>  .dark .x { a: 3; b:2; }
+//   NOTE! This makes the rule more specific, and it could override something that it is not supposed to override
+// TODO: default values for options
+// TODO: same property defined twice in the same rule
+
 export function rmrules(options: Options = {}): (style: StyleRules, rework: any) => void {
-    let assumeSelectorsNotUsed = options.assumeSelectorsNotUsed || [];
-    let assumeSelectorsSet = options.assumeSelectorsSet || [];
     let result: Result = {
         errorCount: 0,
         errorReported: 0,
@@ -354,15 +382,24 @@ export function rmrules(options: Options = {}): (style: StyleRules, rework: any)
         maxReported: (options.maxReported === undefined) ? 20 : options.maxReported
     };
 
+    let opts: OptionsImpl = Object.assign({
+        assumeSelectorsNotUsed: [],
+        assumeSelectorsSet: [],
+        maxReported: 10,
+
+        actOnDeadRules: Action.IGNORE,
+        actOnOverriddenRules: Action.IGNORE
+    }, options);
+
     return (styles: StyleRules, rework: any) => {
         let sm = rework.sourcemap();
         let smc = sm ? new sourceMap.SourceMapConsumer(sm) : undefined;
 
-        removeDeadRules(result, options, smc, styles.rules, assumeSelectorsNotUsed);
+        removeDeadRules(result, opts, smc, styles.rules, opts.assumeSelectorsNotUsed);
 
-        let rules = collectRules(styles.rules, assumeSelectorsSet);
-        let overrides = calculateOverridingRules(rules, assumeSelectorsSet);
-        removeOverriddenDeclarations(result, options, smc, styles.rules, overrides);
+        let rules = collectRules(styles.rules, opts.assumeSelectorsSet);
+        let overrides = calculateOverridingRules(rules, opts.assumeSelectorsSet);
+        removeOverriddenDeclarations(result, opts, smc, styles.rules, overrides);
         
         styles.rules = styles.rules.filter((rule, index) => {
             let _rule = toRule(rule);
@@ -371,10 +408,16 @@ export function rmrules(options: Options = {}): (style: StyleRules, rework: any)
 
         if (result.errorReported < result.errorCount) {
             gutil.log(NAME + ': ' + (result.errorCount - result.errorReported) + ' more errors...');
+        } else if (result.errorCount > 0) {
+            gutil.log(NAME + ': ' + result.errorCount + ' errors...');
         }
+
         if (result.warnReported < result.warnCount) {
             gutil.log(NAME + ': ' + (result.warnCount - result.warnReported) + ' more warnings...');
+        } else if (result.warnCount > 0) {
+            gutil.log(NAME + ': ' + result.warnCount + ' warnings...');            
         }
+
         if (result.errorCount > 0) {
             throw new Error(NAME + ': There were errors, see the log for details');
         }
