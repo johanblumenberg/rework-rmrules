@@ -184,6 +184,20 @@ function firstDeclaration(node: Node): _Declaration {
     return rule && rule.declarations && rule.declarations.find(node => !!toDeclaration(node));
 }
 
+function firstDeclarationAnd(node: Node) {
+    let rule = toRule(node);
+    if (rule && rule.declarations) {
+        let decl = rule.declarations.find(node => !!toDeclaration(node));
+        if (decl) {
+            return [{
+                rule: rule,
+                decl: decl
+            }];
+        }
+    }
+    return [];
+}
+
 function toRule<T extends Node>(rule: T): _Rule {
     if (rule.type === 'rule') {
         return <Rule>rule;
@@ -204,7 +218,7 @@ function removeDeadRules(result: Result, options: OptionsImpl, smc: any, rules: 
                 let selector = parser.parse(selectorString);
 
                 if ((selector.type === 'ruleSet') && ruleUsesAnyOf(selector.rule, assumeSelectorsNotUsed)) {
-                    return !error(result, options.actOnDeadRules, smc, firstDeclaration(_rule), _rule, undefined, undefined, 'Selector $1 is never used', selectorString);
+                    return !error(result, options.actOnDeadRules, smc, [], firstDeclaration(_rule), _rule, 'Selector $1 is never used', selectorString);
                 } else {
                     return true;
                 }
@@ -291,8 +305,26 @@ function overridesAllDeclarations(a: Declaration[], b: Declaration[]) {
     return b.every(b_decoration => a.some(a_decoration => a_decoration.property === b_decoration.property));
 }
 
-function removeOverriddenDeclarations(result: Result, options: OptionsImpl, smc: any, rules: Node[], overrides: { rule: RulePosition, overrides: RulePosition }[]) {
-    overrides.forEach(({ rule, overrides }) => {
+function allSelectorsAreOverridden(overriddenRulePos: number, decl: Declaration, rules: Node[], calculatedOverrides: { rule: RulePosition, overrides: RulePosition }[]) {
+    let overriddenRule = toRule(rules[overriddenRulePos]);
+    let found = Array(overriddenRule!.selectors!.length).fill(false);
+    calculatedOverrides.forEach(override => {
+        if (override.overrides.rulePos === overriddenRulePos) {
+            const overridingRule = toRule(rules[override.rule.rulePos]);
+
+            if (overridingRule && overridingRule.declarations) {
+                let overridingDeclaration = findDeclaration(decl, overridingRule.declarations);
+                if (overridingDeclaration) {
+                    found[override.overrides.selectorPos] = { rule: overridingRule, decl: overridingDeclaration };
+                }
+            }
+        }
+    });
+    return found.every(i => !!i) && found;
+}
+
+function removeOverriddenDeclarations(result: Result, options: OptionsImpl, smc: any, rules: Node[], calculatedOverrides: { rule: RulePosition, overrides: RulePosition }[]) {
+    calculatedOverrides.forEach(({ rule, overrides }) => {
         const a = toRule(rules[rule.rulePos]);
         const b = toRule(rules[overrides.rulePos]);
 
@@ -301,16 +333,26 @@ function removeOverriddenDeclarations(result: Result, options: OptionsImpl, smc:
                 b.declarations = b.declarations.filter(overriddenDeclaration => {
                     let overridingDeclaration = findDeclaration(overriddenDeclaration, a.declarations!);
                     if (overridingDeclaration) {
-                        return !error(result, options.actOnOverriddenRules, smc, overridingDeclaration, a, overriddenDeclaration, b, 'Selector $1 always overides css property $2 of $3', a.selectors![rule.selectorPos], (<any>overridingDeclaration).property, b.selectors![overrides.selectorPos]);
+                        return !error(result, options.actOnOverriddenRules, smc, [{ decl: overridingDeclaration, rule: a}], overriddenDeclaration, b, 'Selector $1 always overides css property $2 of $3', a.selectors![rule.selectorPos], (<any>overridingDeclaration).property, b.selectors![overrides.selectorPos]);
                     } else {
                         return true;
                     }
                 });
             } else if (b.selectors && b.selectors.length > 1) {
                 if (overridesAllDeclarations(a.declarations, b.declarations)) {
-                    if (error(result, options.actOnOverriddenRules, smc, firstDeclaration(a), a, firstDeclaration(b), b, 'Selector $1 always overides all css properties of $2', a.selectors[rule.selectorPos], b.selectors[overrides.selectorPos])) {
+                    if (error(result, options.actOnOverriddenRules, smc, firstDeclarationAnd(a), firstDeclaration(b), b, 'Selector $1 always overides all css properties of $2', a.selectors[rule.selectorPos], b.selectors[overrides.selectorPos])) {
                         b.selectors.splice(overrides.selectorPos, 1);
                     }
+                } else {
+                    b.declarations = b.declarations.filter(overriddenDeclaration => {
+                        if (findDeclaration(overriddenDeclaration, a.declarations!)) {
+                            let overridingRules = allSelectorsAreOverridden(overrides.rulePos, overriddenDeclaration, rules, calculatedOverrides);
+                        if (overridingRules) {
+                                return !error(result, options.actOnOverriddenRules, smc, overridingRules, overriddenDeclaration, b, 'css property $1 of $2 is always overridden', (<any>overriddenDeclaration).property, b.selectors![overrides.selectorPos]);
+                            }
+                        }
+                        return true;
+                    });
                 }
             }
         }
@@ -339,19 +381,21 @@ function posText(pos: { source: string, line: number, column: number }): string 
     return pos.source + ':' + pos.line + ':' + pos.column;
 }
 
-function logPosition(smc: any, decl: _Declaration, rule: Node, overridesDecl: _Declaration, overridesRule: _Node) {
-    let declPos = position(smc, decl);
-    let rulePos = position(smc, rule);
+function logPosition(smc: any, decl: OverridingDecl[], overridesDecl: _Declaration, overridesRule: Node) {
+    decl.forEach(d => {
+        let declPos = position(smc, d.decl);
+        let rulePos = position(smc, d.rule);
 
-    if (rulePos && declPos) {
-        if (declPos.source === rulePos.source) {
-            gutil.log(NAME + ':  at:         ' + chalk.grey(posText(declPos)));
-        } else {
-            gutil.log(NAME + ':  at:');
-            gutil.log(NAME + ':    property: ' + chalk.grey(posText(declPos)));
-            gutil.log(NAME + ':    rule:     ' + chalk.grey(posText(rulePos)));
+        if (rulePos && declPos) {
+            if (declPos.source === rulePos.source) {
+                gutil.log(NAME + ':  rule at:    ' + chalk.grey(posText(declPos)));
+            } else {
+                gutil.log(NAME + ':  rule at:');
+                gutil.log(NAME + ':    property: ' + chalk.grey(posText(declPos)));
+                gutil.log(NAME + ':    rule:     ' + chalk.grey(posText(rulePos)));
+            }
         }
-    }
+    });
 
     let declOverPos = position(smc, overridesDecl);
     let ruleOverPos = position(smc, overridesRule);
@@ -367,7 +411,12 @@ function logPosition(smc: any, decl: _Declaration, rule: Node, overridesDecl: _D
     }
 }
 
-function error(result: Result, action: Action, smc: any, decl: _Declaration, rule: Node, overridesDecl: _Declaration, overridesRule: _Node, msg: string, ...args: string[]) {
+interface OverridingDecl {
+    decl: Declaration;
+    rule: Rule;
+};
+
+function error(result: Result, action: Action, smc: any, decl: OverridingDecl[], overridesDecl: _Declaration, overridesRule: Node, msg: string, ...args: string[]) {
     if (action === Action.REMOVE) {
         return true;
     } else {
@@ -376,14 +425,14 @@ function error(result: Result, action: Action, smc: any, decl: _Declaration, rul
             if (result.maxReported-- > 0) {
                 result.errorReported++;
                 gutil.log(NAME + ': [' + chalk.redBright('ERROR') + '] ' + format(msg, args));
-                logPosition(smc, decl, rule, overridesDecl, overridesRule);
+                logPosition(smc, decl, overridesDecl, overridesRule);
             }
         } else if (action === Action.WARN) {
             result.warnCount++;
             if (result.maxReported-- > 0) {
                 result.warnReported++;
                 gutil.log(NAME + ': [' + chalk.black('WARN') + '] ' + format(msg, args));
-                logPosition(smc, decl, rule, overridesDecl, overridesRule);
+                logPosition(smc, decl, overridesDecl, overridesRule);
             }
         }
         return false;
@@ -393,7 +442,6 @@ function error(result: Result, action: Action, smc: any, decl: _Declaration, rul
 // TODO: Don't override declarations with !important
 // TODO: Suggest to combine rules where there is a more specific rule, .dark .x { a: 3; } .x { b: 2; }  =>  .dark .x { a: 3; b:2; }
 //   NOTE! This makes the rule more specific, and it could override something that it is not supposed to override
-// TODO: default values for options
 // TODO: same property defined twice in the same rule
 
 export function rmrules(options: Options = {}): (style: StyleRules, rework: any) => void {

@@ -409,13 +409,17 @@ describe('rmrules', () => {
             expect(rmrule(input)).to.equal(output, msg(input));
         });
 
-        /* TODO: leave for later, it's a tricky corner case
-        it ('should not remove a rule if all declarations are not overridden', () => {
+        it ('should remove a rule if all declarations are overridden', () => {
             let input = '.y, .z { color: red; background: green; } .y { color: blue; } .z { color: blue; }';
-            let output = '.y,.z{background:green;}.y{color:blue;},.z{color:blue;}';
+            let output = '.y,.z{background:green;}.y{color:blue;}.z{color:blue;}';
             expect(rmrule(input)).to.equal(output, msg(input));
         });
-        */
+
+        it ('should not remove a rule if all declarations are not overridden', () => {
+            let input = '.y, .z { color: red; background: green; } .y { color: blue; }';
+            let output = '.y,.z{color:red;background:green;}.y{color:blue;}';
+            expect(rmrule(input)).to.equal(output, msg(input));
+        });
     });
 
     describe('error', () => {
