@@ -321,25 +321,49 @@ function format(msg: string, args: string[]) {
     return msg.replace(/\$(.)/g, x => '[' + chalk.magentaBright(args[parseInt(x.substr(1)) - 1]) + ']');
 }
 
-function position(smc: any, source: string | undefined, position: Position) {
-    if (smc) {
-        let originalPosition = smc.originalPositionFor(position);
-        return originalPosition.source + ':' + originalPosition.line + ':' + originalPosition.column;
-    } else {
-        return source + ':' + position.line + ':' + position.column;
+function position(smc: any, node: _Node) {
+    if (node && node.position && node.position.source && node.position.start) {
+        if (smc) {
+            return smc.originalPositionFor(node.position.start);
+        } else {
+            return {
+                source: node.position.source,
+                line: node.position.start.line,
+                column: node.position.start.column
+            };
+        }
     }
 }
 
+function posText(pos: { source: string, line: number, column: number }): string {
+    return pos.source + ':' + pos.line + ':' + pos.column;
+}
+
 function logPosition(smc: any, decl: _Declaration, rule: Node, overridesDecl: _Declaration, overridesRule: _Node) {
-    if (decl && decl.position && decl.position.start && rule.position && rule.position.start) {
-        gutil.log(NAME + ':  at:');
-        gutil.log(NAME + ':    property: ' + chalk.grey(position(smc, decl.position.source, decl.position.start)));
-        gutil.log(NAME + ':    rule:     ' + chalk.grey(position(smc, rule.position.source, rule.position.start)));
+    let declPos = position(smc, decl);
+    let rulePos = position(smc, rule);
+
+    if (rulePos && declPos) {
+        if (declPos.source === rulePos.source) {
+            gutil.log(NAME + ':  at:         ' + chalk.grey(posText(declPos)));
+        } else {
+            gutil.log(NAME + ':  at:');
+            gutil.log(NAME + ':    property: ' + chalk.grey(posText(declPos)));
+            gutil.log(NAME + ':    rule:     ' + chalk.grey(posText(rulePos)));
+        }
     }
-    if (overridesDecl && overridesDecl.position && overridesDecl.position.start && overridesRule && overridesRule.position && overridesRule.position.start) {
-        gutil.log(NAME + ':  overrides:');
-        gutil.log(NAME + ':    property: ' + chalk.grey(position(smc, overridesDecl.position.source, overridesDecl.position.start)));
-        gutil.log(NAME + ':    rule:     ' + chalk.grey(position(smc, overridesRule.position.source, overridesRule.position.start)));
+
+    let declOverPos = position(smc, overridesDecl);
+    let ruleOverPos = position(smc, overridesRule);
+
+    if (ruleOverPos && declOverPos) {
+        if (declOverPos.source === ruleOverPos.source) {
+            gutil.log(NAME + ':  overrides:  ' + chalk.grey(posText(declOverPos)));
+        } else {
+            gutil.log(NAME + ':  overrides:');
+            gutil.log(NAME + ':    property: ' + chalk.grey(posText(declOverPos)));
+            gutil.log(NAME + ':    rule:     ' + chalk.grey(posText(ruleOverPos)));
+        }
     }
 }
 
