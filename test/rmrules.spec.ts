@@ -166,6 +166,20 @@ describe('rmrules', () => {
             });
         });
 
+        describe('!important', () => {
+            it('should not remove overridden rule with !important', () => {
+                let input = '.x .y { color: red; } .y { color: blue !important; }';
+                let output = '.x .y{color:red;}.y{color:blue !important;}';
+                expect(rmrule(input)).to.equal(output, msg(input));
+            });
+    
+            it('should remove overridden rule with !important if overriding also with !important', () => {
+                let input = '.x .y { color: red !important; } .y { color: blue !important; }';
+                let output = '.x .y{color:red !important;}';
+                expect(rmrule(input)).to.equal(output, msg(input));
+            });
+        });
+
         describe('with tag', () => {
             it('should remove overridden rule', () => {
                 let input = 'y { color: red; } y { color: blue; }';

@@ -301,8 +301,18 @@ function calculateOverridingRules(rules: { list: RulePosition[], index: RuleInde
     return result;
 }
 
+function isAlwaysOverridingDeclaration(a: Declaration, b: Declaration): boolean {
+    if (a.property === b.property) {
+        if (b.value && b.value.indexOf('important') >= 0) {
+            return !!a.value && a.value.indexOf('important') >= 0;
+        }
+        return true;
+    }
+    return false;
+}
+
 function overridesAllDeclarations(a: Declaration[], b: Declaration[]) {
-    return b.every(b_decoration => a.some(a_decoration => a_decoration.property === b_decoration.property));
+    return b.every(b_declaration => a.some(a_declaration => isAlwaysOverridingDeclaration(a_declaration, b_declaration)));
 }
 
 function allSelectorsAreOverridden(overriddenRulePos: number, decl: Declaration, rules: Node[], calculatedOverrides: { rule: RulePosition, overrides: RulePosition }[]) {
@@ -314,7 +324,7 @@ function allSelectorsAreOverridden(overriddenRulePos: number, decl: Declaration,
 
             if (overridingRule && overridingRule.declarations) {
                 let overridingDeclaration = findDeclaration(decl, overridingRule.declarations);
-                if (overridingDeclaration) {
+                if (overridingDeclaration && isAlwaysOverridingDeclaration(overridingDeclaration, decl)) {
                     found[override.overrides.selectorPos] = { rule: overridingRule, decl: overridingDeclaration };
                 }
             }
@@ -332,7 +342,7 @@ function removeOverriddenDeclarations(result: Result, options: OptionsImpl, smc:
             if (b.selectors && b.selectors.length === 1) {
                 b.declarations = b.declarations.filter(overriddenDeclaration => {
                     let overridingDeclaration = findDeclaration(overriddenDeclaration, a.declarations!);
-                    if (overridingDeclaration) {
+                    if (overridingDeclaration && isAlwaysOverridingDeclaration(overridingDeclaration, overriddenDeclaration)) {
                         return !error(result, options.actOnOverriddenRules, smc, [{ decl: overridingDeclaration, rule: a}], overriddenDeclaration, b, 'Selector $1 always overides css property $2 of $3', a.selectors![rule.selectorPos], (<any>overridingDeclaration).property, b.selectors![overrides.selectorPos]);
                     } else {
                         return true;
@@ -347,7 +357,7 @@ function removeOverriddenDeclarations(result: Result, options: OptionsImpl, smc:
                     b.declarations = b.declarations.filter(overriddenDeclaration => {
                         if (findDeclaration(overriddenDeclaration, a.declarations!)) {
                             let overridingRules = allSelectorsAreOverridden(overrides.rulePos, overriddenDeclaration, rules, calculatedOverrides);
-                        if (overridingRules) {
+                            if (overridingRules) {
                                 return !error(result, options.actOnOverriddenRules, smc, overridingRules, overriddenDeclaration, b, 'css property $1 of $2 is always overridden', (<any>overriddenDeclaration).property, b.selectors![overrides.selectorPos]);
                             }
                         }
@@ -443,6 +453,8 @@ function error(result: Result, action: Action, smc: any, decl: OverridingDecl[],
 // TODO: Suggest to combine rules where there is a more specific rule, .dark .x { a: 3; } .x { b: 2; }  =>  .dark .x { a: 3; b:2; }
 //   NOTE! This makes the rule more specific, and it could override something that it is not supposed to override
 // TODO: same property defined twice in the same rule
+// TODO: check if !important is always overriding some rules that can be removed, .a .b { a:1 } .b { a:2 !important; } => .b { a:2 !important; }
+// TODO: Skip overrides calculation if actOn is IGNORE
 
 export function rmrules(options: Options = {}): (style: StyleRules, rework: any) => void {
     let result: Result = {
