@@ -449,12 +449,10 @@ function error(result: Result, action: Action, smc: any, decl: OverridingDecl[],
     }
 }
 
-// TODO: Don't override declarations with !important
 // TODO: Suggest to combine rules where there is a more specific rule, .dark .x { a: 3; } .x { b: 2; }  =>  .dark .x { a: 3; b:2; }
 //   NOTE! This makes the rule more specific, and it could override something that it is not supposed to override
 // TODO: same property defined twice in the same rule
 // TODO: check if !important is always overriding some rules that can be removed, .a .b { a:1 } .b { a:2 !important; } => .b { a:2 !important; }
-// TODO: Skip overrides calculation if actOn is IGNORE
 
 export function rmrules(options: Options = {}): (style: StyleRules, rework: any) => void {
     let result: Result = {
@@ -479,12 +477,16 @@ export function rmrules(options: Options = {}): (style: StyleRules, rework: any)
         let sm = rework.sourcemap();
         let smc = sm ? new sourceMap.SourceMapConsumer(sm) : undefined;
 
-        removeDeadRules(result, opts, smc, styles.rules, opts.assumeSelectorsNotUsed);
+        if (opts.actOnDeadRules !== Action.IGNORE) {
+            removeDeadRules(result, opts, smc, styles.rules, opts.assumeSelectorsNotUsed);
+        }
 
-        let rules = collectRules(styles.rules, opts.assumeSelectorsSet);
-        let overrides = calculateOverridingRules(rules, opts.assumeSelectorsSet);
-        removeOverriddenDeclarations(result, opts, smc, styles.rules, overrides);
-        
+        if (opts.actOnOverriddenRules !== Action.IGNORE) {
+            let rules = collectRules(styles.rules, opts.assumeSelectorsSet);
+            let overrides = calculateOverridingRules(rules, opts.assumeSelectorsSet);
+            removeOverriddenDeclarations(result, opts, smc, styles.rules, overrides);
+        }
+
         styles.rules = styles.rules.filter((rule, index) => {
             let _rule = toRule(rule);
             return !_rule || ((_rule.selectors && _rule.selectors.length) && (_rule.declarations && _rule.declarations.length));
