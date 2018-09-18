@@ -15,16 +15,6 @@ export enum Action {
 }
 
 export interface Options {
-    assumeSelectorsNotUsed?: string[];
-    assumeSelectorsSet?: string[];
-
-    actOnDeadRules?: Action;
-    actOnOverriddenRules?: Action;
-
-    maxReported?: number;
-}
-
-export interface OptionsImpl {
     assumeSelectorsNotUsed: string[];
     assumeSelectorsSet: string[];
 
@@ -210,7 +200,7 @@ function toDeclaration<T extends Node>(rule: T): _Declaration {
     }
 }
 
-function removeDeadRules(result: Result, options: OptionsImpl, smc: any, rules: Node[], assumeSelectorsNotUsed: string[]) {
+function removeDeadRules(result: Result, options: Options, smc: any, rules: Node[], assumeSelectorsNotUsed: string[]) {
     rules.forEach((rule, index) => {
         const _rule = toRule(rule);
         if (_rule && _rule.selectors) {
@@ -333,7 +323,7 @@ function allSelectorsAreOverridden(overriddenRulePos: number, decl: Declaration,
     return found.every(i => !!i) && found;
 }
 
-function removeOverriddenDeclarations(result: Result, options: OptionsImpl, smc: any, rules: Node[], calculatedOverrides: { rule: RulePosition, overrides: RulePosition }[]) {
+function removeOverriddenDeclarations(result: Result, options: Options, smc: any, rules: Node[], calculatedOverrides: { rule: RulePosition, overrides: RulePosition }[]) {
     calculatedOverrides.forEach(({ rule, overrides }) => {
         const a = toRule(rules[rule.rulePos]);
         const b = toRule(rules[overrides.rulePos]);
@@ -454,7 +444,7 @@ function error(result: Result, action: Action, smc: any, decl: OverridingDecl[],
 // TODO: same property defined twice in the same rule
 // TODO: check if !important is always overriding some rules that can be removed, .a .b { a:1 } .b { a:2 !important; } => .b { a:2 !important; }
 
-export function rmrules(options: Options = {}): (style: StyleRules, rework: any) => void {
+export function rmrules(options: Partial<Options> = {}): (style: StyleRules, rework: any) => void {
     let result: Result = {
         errorCount: 0,
         errorReported: 0,
@@ -464,7 +454,7 @@ export function rmrules(options: Options = {}): (style: StyleRules, rework: any)
         maxReported: (options.maxReported === undefined) ? 20 : options.maxReported
     };
 
-    let opts: OptionsImpl = Object.assign({
+    let opts: Options = Object.assign({
         assumeSelectorsNotUsed: [],
         assumeSelectorsSet: [],
         maxReported: 10,
@@ -474,8 +464,7 @@ export function rmrules(options: Options = {}): (style: StyleRules, rework: any)
     }, options);
 
     return (styles: StyleRules, rework: any) => {
-        let sm = rework.sourcemap();
-        let smc = sm ? new sourceMap.SourceMapConsumer(sm) : undefined;
+        let smc = rework.sourcemap && new sourceMap.SourceMapConsumer(rework.sourcemap());
 
         if (opts.actOnDeadRules !== Action.IGNORE) {
             removeDeadRules(result, opts, smc, styles.rules, opts.assumeSelectorsNotUsed);
