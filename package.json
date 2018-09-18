@@ -5,7 +5,8 @@
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "jest"
+    "test": "jest",
+    "prepare": "npm run build"
   },
   "author": "johan.blumenberg@gmail.com",
   "license": "MIT",
@@ -18,7 +19,7 @@
   "devDependencies": {
     "@types/chai": "^4.0.5",
     "@types/chalk": "^2.2.0",
-    "@types/css": "0.0.30",
+    "@types/css": "0.0.31",
     "@types/gulp-util": "^3.0.34",
     "@types/jest": "^21.1.6",
     "@types/node": "^8.0.53",
