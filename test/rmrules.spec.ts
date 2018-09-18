@@ -178,6 +178,26 @@ describe('rmrules', () => {
                 let output = '.x .y{color:red !important;}';
                 expect(rmrule(input)).to.equal(output, msg(input));
             });
+
+            it('should remove rule if overriden by !important even if more specific', () => {
+                let input = '.y .z { color: red; } .y { color: blue !important; }';
+                let output = '.y{color:blue !important;}';
+                expect(rmrule(input)).to.equal(output, msg(input));
+            });
+
+            it('should not remove rule if overriden by !important but has other classes', () => {
+                let input = '.y .z { color: red; } .y .a { color: blue !important; }';
+                let output = '.y{color:blue !important;}';
+                expect(rmrule(input)).to.equal(output, msg(input));
+            });
+        });
+
+        describe('multiple occurances of same property', () => {
+            it('should remove properties overridden in the same rule', () => {
+                let input = '.y { color: red; color: blue; }';
+                let output = '.y{color:blue;}';
+                expect(rmrule(input)).to.equal(output, msg(input));
+            });
         });
 
         describe('with tag', () => {
