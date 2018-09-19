@@ -359,6 +359,24 @@ function allSelectorsAreOverridden(overriddenRulePos: number, decl: Declaration,
     return found.every(i => !!i) && found;
 }
 
+function removeDeclarationsOverriddenInSameRule(result: Result, options: Options, smc: any, rules: Node[]) {
+    rules.forEach((rule, index) => {
+        const _rule = toRule(rule);
+        if (_rule && _rule.declarations) {
+            let declarations = _rule.declarations.map(d => toDeclaration(d));
+            _rule.declarations = _rule.declarations.filter((d, i) => {
+                const _d = toDeclaration(d);
+                if (_d && _d.property) {
+                    if (declarations.map(d => !!d && d.property === _d.property).lastIndexOf(true) !== i) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+    });
+}
+
 function removeOverriddenDeclarations(result: Result, options: Options, smc: any, rules: Node[], calculatedOverrides: { rule: RulePosition, overrides: RulePosition }[]) {
     calculatedOverrides.forEach(({ rule, overrides }) => {
         const a = toRule(rules[rule.rulePos]);
@@ -514,6 +532,8 @@ export function rmrules(options: Partial<Options> = {}): (style: StyleRules, rew
         }
 
         if (opts.actOnOverriddenRules !== Action.IGNORE) {
+            removeDeclarationsOverriddenInSameRule(result, opts, smc, styles.rules);
+
             let rules = collectRules(styles.rules, opts.assumeSelectorsSet);
             let overrides = calculateOverridingRules(rules, opts.assumeSelectorsSet);
             removeOverriddenDeclarations(result, opts, smc, styles.rules, overrides);
