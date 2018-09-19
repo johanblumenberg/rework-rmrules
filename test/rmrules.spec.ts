@@ -10,7 +10,7 @@ describe('rmrules', () => {
     }
 
     describe('remove dead rules', () => {
-        function rmrule(input: string, options: Options = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.REMOVE }) {
+        function rmrule(input: string, options: Partial<Options> = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.REMOVE }) {
             return rework(input).use(rmrules(options)).toString({ compress: true });
         }
 
@@ -76,7 +76,7 @@ describe('rmrules', () => {
     });
 
     describe('overridden rules', () => {
-        function rmrule(input: string, options: Options = { assumeSelectorsSet: [ ".x", "#t", "x" ], actOnOverriddenRules: Action.REMOVE }) {
+        function rmrule(input: string, options: Partial<Options> = { assumeSelectorsSet: [ ".x", "#t", "x" ], actOnOverriddenRules: Action.REMOVE }) {
             return rework(input).use(rmrules(options)).toString({ compress: true });
         }
 
@@ -457,7 +457,7 @@ describe('rmrules', () => {
     });
 
     describe('error', () => {
-        function rmrule(input: string, options: Options = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.ERROR, actOnOverriddenRules: Action.ERROR, maxReported: 1 }) {
+        function rmrule(input: string, options: Partial<Options> = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.ERROR, actOnOverriddenRules: Action.ERROR, maxReported: 1 }) {
             return () => rework(input).use(rmrules(options)).toString({ compress: true });
         }
 
@@ -478,7 +478,7 @@ describe('rmrules', () => {
     });
 
     describe('warn', () => {
-        function rmrule(input: string, options: Options = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.WARN, actOnOverriddenRules: Action.WARN, maxReported: 1 }) {
+        function rmrule(input: string, options: Partial<Options> = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.WARN, actOnOverriddenRules: Action.WARN, maxReported: 1 }) {
             return () => rework(input).use(rmrules(options)).toString({ compress: true });
         }
 
@@ -499,7 +499,7 @@ describe('rmrules', () => {
     });
 
     describe('ignore', () => {
-        function rmrule(input: string, options: Options = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.IGNORE, actOnOverriddenRules: Action.IGNORE, maxReported: 1 }) {
+        function rmrule(input: string, options: Partial<Options> = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.IGNORE, actOnOverriddenRules: Action.IGNORE, maxReported: 1 }) {
             return () => rework(input).use(rmrules(options)).toString({ compress: true });
         }
 

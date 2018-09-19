@@ -37,9 +37,8 @@ interface RuleIndex {
 
 interface Result {
     errorCount: number;
-    errorReported: number;
     warnCount: number;
-    warnReported: number;
+    removeCount: number;
 
     maxReported: number;
 };
@@ -418,19 +417,22 @@ interface OverridingDecl {
 
 function error(result: Result, action: Action, smc: any, decl: OverridingDecl[], overridesDecl: _Declaration, overridesRule: Node, msg: string, ...args: string[]) {
     if (action === Action.REMOVE) {
+        result.removeCount++;
+        if (result.maxReported-- > 0) {
+            gutil.log(NAME + ': [' + chalk.redBright('REMOVE') + '] ' + format(msg, args));
+            logPosition(smc, decl, overridesDecl, overridesRule);
+        }
         return true;
     } else {
         if (action === Action.ERROR) {
             result.errorCount++;
             if (result.maxReported-- > 0) {
-                result.errorReported++;
                 gutil.log(NAME + ': [' + chalk.redBright('ERROR') + '] ' + format(msg, args));
                 logPosition(smc, decl, overridesDecl, overridesRule);
             }
         } else if (action === Action.WARN) {
             result.warnCount++;
             if (result.maxReported-- > 0) {
-                result.warnReported++;
                 gutil.log(NAME + ': [' + chalk.black('WARN') + '] ' + format(msg, args));
                 logPosition(smc, decl, overridesDecl, overridesRule);
             }
@@ -447,9 +449,8 @@ function error(result: Result, action: Action, smc: any, decl: OverridingDecl[],
 export function rmrules(options: Partial<Options> = {}): (style: StyleRules, rework: any) => void {
     let result: Result = {
         errorCount: 0,
-        errorReported: 0,
         warnCount: 0,
-        warnReported: 0,
+        removeCount: 0,
 
         maxReported: (options.maxReported === undefined) ? 20 : options.maxReported
     };
@@ -464,7 +465,8 @@ export function rmrules(options: Partial<Options> = {}): (style: StyleRules, rew
     }, options);
 
     return (styles: StyleRules, rework: any) => {
-        let smc = rework.sourcemap && new sourceMap.SourceMapConsumer(rework.sourcemap());
+        let sm = rework.sourcemap && rework.sourcemap();
+        let smc = sm && new sourceMap.SourceMapConsumer(sm);
 
         if (opts.actOnDeadRules !== Action.IGNORE) {
             removeDeadRules(result, opts, smc, styles.rules, opts.assumeSelectorsNotUsed);
@@ -481,16 +483,14 @@ export function rmrules(options: Partial<Options> = {}): (style: StyleRules, rew
             return !_rule || ((_rule.selectors && _rule.selectors.length) && (_rule.declarations && _rule.declarations.length));
         });
 
-        if (result.errorReported < result.errorCount) {
-            gutil.log(NAME + ': ' + (result.errorCount - result.errorReported) + ' more errors...');
-        } else if (result.errorCount > 0) {
+        if (result.errorCount > 0) {
             gutil.log(NAME + ': ' + result.errorCount + ' errors...');
         }
-
-        if (result.warnReported < result.warnCount) {
-            gutil.log(NAME + ': ' + (result.warnCount - result.warnReported) + ' more warnings...');
-        } else if (result.warnCount > 0) {
+        if (result.warnCount > 0) {
             gutil.log(NAME + ': ' + result.warnCount + ' warnings...');            
+        }
+        if (result.removeCount > 0) {
+            gutil.log(NAME + ': ' + result.removeCount + ' removals...');            
         }
 
         if (result.errorCount > 0) {
