@@ -456,6 +456,36 @@ describe('rmrules', () => {
         });
     });
 
+    describe('body', () => {
+        function rmrule(input: string, options: Partial<Options> = { actOnInvalidBodyRules: Action.REMOVE }) {
+            return rework(input).use(rmrules(options)).toString({ compress: true });
+        }
+
+        it('should remove rules where body is not the first part of a selector', () => {
+            let input = '.y body { color: red; background: green; } .z { color: blue; }';
+            let output = '.z{color:blue;}';
+            expect(rmrule(input)).to.equal(output, msg(input));
+        });
+
+        it('should remove rules where body with class is not the first part of a selector', () => {
+            let input = '.y body.x { color: red; background: green; } .z { color: blue; }';
+            let output = '.z{color:blue;}';
+            expect(rmrule(input)).to.equal(output, msg(input));
+        });
+
+        it('should not remove rules where body is the first part of a selector', () => {
+            let input = 'body .y { color: red; background: green; } .z { color: blue; }';
+            let output = 'body .y{color:red;background:green;}.z{color:blue;}';
+            expect(rmrule(input)).to.equal(output, msg(input));
+        });
+
+        it('should not remove rules where body with a class is the first part of a selector', () => {
+            let input = 'body.x .y { color: red; background: green; } .z { color: blue; }';
+            let output = 'body.x .y{color:red;background:green;}.z{color:blue;}';
+            expect(rmrule(input)).to.equal(output, msg(input));
+        });
+    });
+
     describe('error', () => {
         function rmrule(input: string, options: Partial<Options> = { assumeSelectorsNotUsed: [ ".x" ], actOnDeadRules: Action.ERROR, actOnOverriddenRules: Action.ERROR, maxReported: 1 }) {
             return () => rework(input).use(rmrules(options)).toString({ compress: true });

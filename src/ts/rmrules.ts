@@ -20,6 +20,7 @@ export interface Options {
 
     actOnDeadRules: Action;
     actOnOverriddenRules: Action;
+    actOnInvalidBodyRules: Action;
 
     maxReported: number;
 }
@@ -51,6 +52,24 @@ const NAME = 'rework-rmrules';
 
 function unique<T>(e: T, i: number, arr: T[]) {
     return arr.lastIndexOf(e) === i;
+}
+
+function ruleUsesBodyTag(rule: any): boolean {
+    if (rule.tagName === 'body') {
+        return true;
+    } else if (rule.rule) {
+        return ruleUsesBodyTag(rule.rule);
+    } else {
+        return false;
+    }
+}
+
+function ruleHasInvalidBodyTag(rule: any) {
+    if (rule.rule) {
+        return ruleUsesBodyTag(rule.rule);
+    } else {
+        return false;
+    }
 }
 
 function ruleUsesAnyOf(rule: any, anyOf: string[]): boolean {
@@ -208,6 +227,24 @@ function removeDeadRules(result: Result, options: Options, smc: any, rules: Node
 
                 if ((selector.type === 'ruleSet') && ruleUsesAnyOf(selector.rule, assumeSelectorsNotUsed)) {
                     return !error(result, options.actOnDeadRules, smc, [], firstDeclaration(_rule), _rule, 'Selector $1 is never used', selectorString);
+                } else {
+                    return true;
+                }
+            });
+        }
+    });
+}
+
+
+function removeInvalidBodyTagRules(result: Result, options: Options, smc: any, rules: Node[]) {
+    rules.forEach((rule, index) => {
+        const _rule = toRule(rule);
+        if (_rule && _rule.selectors) {
+            _rule.selectors = _rule.selectors.filter((selectorString: string) => {
+                let selector = parser.parse(selectorString);
+
+                if ((selector.type === 'ruleSet') && ruleHasInvalidBodyTag(selector.rule)) {
+                    return !error(result, options.actOnInvalidBodyRules, smc, [], firstDeclaration(_rule), _rule, 'Rule $1 has a body tag which is not in the first position', selectorString);
                 } else {
                     return true;
                 }
@@ -461,13 +498,17 @@ export function rmrules(options: Partial<Options> = {}): (style: StyleRules, rew
         maxReported: 10,
 
         actOnDeadRules: Action.IGNORE,
-        actOnOverriddenRules: Action.IGNORE
+        actOnOverriddenRules: Action.IGNORE,
+        actOnInvalidBodyRules: Action.IGNORE
     }, options);
 
     return (styles: StyleRules, rework: any) => {
         let sm = rework.sourcemap && rework.sourcemap();
         let smc = sm && new sourceMap.SourceMapConsumer(sm);
 
+        if (opts.actOnInvalidBodyRules !== Action.IGNORE) {
+            removeInvalidBodyTagRules(result, opts, smc, styles.rules);
+        }
         if (opts.actOnDeadRules !== Action.IGNORE) {
             removeDeadRules(result, opts, smc, styles.rules, opts.assumeSelectorsNotUsed);
         }
